@@ -409,7 +409,7 @@
 <div class="modal-overlay hidden" id="modal-name">
   <div class="modal">
     <h3>Person hinzufügen</h3><div class="modal-sub"></div>
-    <div class="form-group"><label>Name</label><input type="text" id="input-name" placeholder="z.B. Hans Müller"></div>
+    <div class="form-group"><label>Name</label><input type="text" id="input-name" placeholder="z.B. Hans Müller" autocomplete="off"></div>
     <div class="btn-row">
       <button class="btn btn-secondary" onclick="closeModal('modal-name')">Abbrechen</button>
       <button class="btn btn-primary" onclick="saveName()">Speichern</button>
@@ -424,6 +424,7 @@
 // CONFIG
 // ═══════════════════════════════════════════════════════
 const URL_KEY = 'snackbox_script_url';
+const ADMIN_KEY = 'snackbox_admin_session';
 const DEFAULT_THRESHOLD = 3;
 
 let SCRIPT_URL = localStorage.getItem(URL_KEY) || 'https://script.google.com/macros/s/AKfycbwgFaBK4QQtXUNj_bIhjccVoZ4UYtjvgIkY_UlM0xV47EgQh3mIfiD8n_VMNBVbCEhC/exec';
@@ -503,6 +504,7 @@ async function loadAll() {
     state.people    = data.people    || [];
     state.config    = data.config    || {pin:'1234', stock_threshold:'3'};
     renderNames();
+checkAdminSession();
     hideLoading();
   } catch(e) {
     hideLoading();
@@ -528,6 +530,14 @@ function showAdminDrawer(show){
 // ADMIN AUTH
 // ═══════════════════════════════════════════════════════
 function toggleAdmin(){isAdmin?logoutAdmin():openPinModal('dashboard');}
+function checkAdminSession(){
+  if(localStorage.getItem(ADMIN_KEY)==='1'){
+    isAdmin=true;
+    document.body.classList.add('admin-mode');
+    document.getElementById('lock-icon').textContent='🔓';
+    showAdminDrawer(true);
+  }
+}
 function openPinModal(targetView){
   pendingAdminView=targetView||'dashboard';
   document.getElementById('pin-d1').value='';
@@ -548,6 +558,7 @@ if(entered.length<1)return;
     showAdminDrawer(true);
     if(pendingAdminView)showViewDirect(pendingAdminView);
     showToast('Admin-Modus aktiv ✓');
+  localStorage.setItem(ADMIN_KEY,'1');
   }else{
     document.getElementById('pin-error').textContent='Falscher PIN.';
     document.getElementById('pin-d1').value='';
@@ -557,7 +568,8 @@ if(entered.length<1)return;
 function logoutAdmin(){
   isAdmin=false;document.body.classList.remove('admin-mode');
   document.getElementById('lock-icon').textContent='🔒';
-  showAdminDrawer(false);closeDrawer();showViewDirect('register');showToast('Admin abgemeldet.');
+  showAdminDrawer(false);closeDrawer();showViewDirect('register');localStorage.removeItem(ADMIN_KEY);
+  showToast('Admin abgemeldet.');
 }
 
 // ═══════════════════════════════════════════════════════
