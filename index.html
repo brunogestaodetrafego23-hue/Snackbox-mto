@@ -378,11 +378,8 @@
       <h2>Admin-Zugang</h2>
       <p>Gib den 4-stelligen PIN ein.</p>
       <div class="pin-input-wrap">
-        <input class="pin-digit" id="pin-d1" type="password" maxlength="1" inputmode="numeric" oninput="pinInput(this,'pin-d2')">
-        <input class="pin-digit" id="pin-d2" type="password" maxlength="1" inputmode="numeric" oninput="pinInput(this,'pin-d3')" onkeydown="pinBack(this,event,'pin-d1')">
-        <input class="pin-digit" id="pin-d3" type="password" maxlength="1" inputmode="numeric" oninput="pinInput(this,'pin-d4')" onkeydown="pinBack(this,event,'pin-d2')">
-        <input class="pin-digit" id="pin-d4" type="password" maxlength="1" inputmode="numeric" oninput="pinSubmit()" onkeydown="pinBack(this,event,'pin-d3')">
-      </div>
+  <input class="pin-digit" id="pin-d1" type="password" inputmode="numeric" placeholder="PIN" style="width:160px;font-size:20px;text-align:center;letter-spacing:.3em;">
+</div>
       <div class="pin-error" id="pin-error"></div>
       <div class="btn-row" style="justify-content:center;">
         <button class="btn btn-secondary btn-sm" onclick="closeModal('modal-pin')">Abbrechen</button>
@@ -531,7 +528,7 @@ function showAdminDrawer(show){
 function toggleAdmin(){isAdmin?logoutAdmin():openPinModal('dashboard');}
 function openPinModal(targetView){
   pendingAdminView=targetView||'dashboard';
-  ['pin-d1','pin-d2','pin-d3','pin-d4'].forEach(id=>{const el=document.getElementById(id);el.value='';el.classList.remove('filled');});
+  document.getElementById('pin-d1').value='';
   document.getElementById('pin-error').textContent='';
   document.getElementById('modal-pin').classList.remove('hidden');
   setTimeout(()=>document.getElementById('pin-d1').focus(),150);
@@ -539,8 +536,8 @@ function openPinModal(targetView){
 function pinInput(el,nextId){if(el.value.length===1){el.classList.add('filled');const n=document.getElementById(nextId);if(n)n.focus();}}
 function pinBack(el,e,prevId){if(e.key==='Backspace'&&el.value===''){const p=document.getElementById(prevId);if(p){p.value='';p.classList.remove('filled');p.focus();}}}
 function pinSubmit(){
-  const entered=['pin-d1','pin-d2','pin-d3','pin-d4'].map(id=>document.getElementById(id).value).join('');
-  if(entered.length<4)return;
+  const entered=document.getElementById('pin-d1').value.trim();
+if(entered.length<4)return;
   const correctPin = String(state.config.pin || '1234');
   if(entered===correctPin){
     isAdmin=true;closeModal('modal-pin');
