@@ -541,7 +541,7 @@ function pinBack(el,e,prevId){if(e.key==='Backspace'&&el.value===''){const p=doc
 function pinSubmit(){
   const entered=['pin-d1','pin-d2','pin-d3','pin-d4'].map(id=>document.getElementById(id).value).join('');
   if(entered.length<4)return;
-  const correctPin = state.config.pin || '1234';
+  const correctPin = String(state.config.pin || '1234');
   if(entered===correctPin){
     isAdmin=true;closeModal('modal-pin');
     document.body.classList.add('admin-mode');
