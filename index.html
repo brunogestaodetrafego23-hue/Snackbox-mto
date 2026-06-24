@@ -378,8 +378,9 @@
       <h2>Admin-Zugang</h2>
       <p>Gib den 4-stelligen PIN ein.</p>
       <div class="pin-input-wrap">
-  <input class="pin-digit" id="pin-d1" type="password" inputmode="numeric" placeholder="PIN" style="width:160px;font-size:20px;text-align:center;letter-spacing:.3em;">
+  <input class="pin-digit" id="pin-d1" type="password" placeholder="PIN" style="width:160px;font-size:20px;text-align:center;letter-spacing:.3em;">
 </div>
+      <button class="btn btn-primary btn-sm" style="margin-bottom:12px;" onclick="pinSubmit()">Bestätigen</button>
       <div class="pin-error" id="pin-error"></div>
       <div class="btn-row" style="justify-content:center;">
         <button class="btn btn-secondary btn-sm" onclick="closeModal('modal-pin')">Abbrechen</button>
@@ -537,7 +538,7 @@ function pinInput(el,nextId){if(el.value.length===1){el.classList.add('filled');
 function pinBack(el,e,prevId){if(e.key==='Backspace'&&el.value===''){const p=document.getElementById(prevId);if(p){p.value='';p.classList.remove('filled');p.focus();}}}
 function pinSubmit(){
   const entered=document.getElementById('pin-d1').value.trim();
-if(entered.length<4)return;
+if(entered.length<1)return;
   const correctPin = String(state.config.pin || '1234');
   if(entered===correctPin){
     isAdmin=true;closeModal('modal-pin');
