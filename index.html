@@ -387,7 +387,7 @@
     <div class="kpi-card"><div class="kpi-label">Lageralarme</div><div class="kpi-value red" id="kpi-alerts">0</div><div class="kpi-sub">Produkte nachfüllen</div></div>
   </div>
   <div class="filter-row">
-    <select id="dash-month-filter" onchange="renderDashboard()"></select>
+    <select id="dash-month-filter" onchange="onMonthFilterChange()"></select>
     <select id="dash-person-filter" onchange="renderDashboard()"><option value="all">Alle Personen</option></select>
   </div>
   <div class="section-title" style="font-size:14px;margin-bottom:12px;">Pro Person</div>
@@ -598,18 +598,95 @@ async function api(action, body={}) {
   return data;
 }
 
+// Cache TTL: 5 minutes
+const CACHE_TTL = 5 * 60 * 1000;
+const CACHE_KEY_BASIC = 'snackbox_cache_basic';
+const CACHE_KEY_TS    = 'snackbox_cache_ts';
+let consumosLoaded = false;
+
 async function loadAll() {
-  showLoading('Daten werden geladen…');
+  // Try cache first — show UI immediately
+  try {
+    const cached = localStorage.getItem(CACHE_KEY_BASIC);
+    const ts     = parseInt(localStorage.getItem(CACHE_KEY_TS) || '0');
+    if (cached && Date.now() - ts < CACHE_TTL) {
+      const data = JSON.parse(cached);
+      state.products = data.products || [];
+      state.people   = data.people   || [];
+      state.config   = data.config   || {pin:'1234', stock_threshold:'3'};
+      renderNames();
+      checkAdminSession();
+      // Refresh in background silently
+      loadBasicFromServer(false);
+      return;
+    }
+  } catch(e) {}
+  // No cache — load from server with spinner
+  await loadBasicFromServer(true);
+}
+
+async function loadBasicFromServer(showSpinner) {
+  if (showSpinner) showLoading('Daten werden geladen…');
+  try {
+    const data = await api('getBasicData');
+    state.products = data.products || [];
+    state.people   = data.people   || [];
+    state.config   = data.config   || {pin:'1234', stock_threshold:'3'};
+    // Save to cache
+    localStorage.setItem(CACHE_KEY_BASIC, JSON.stringify({
+      products: state.products,
+      people:   state.people,
+      config:   state.config
+    }));
+    localStorage.setItem(CACHE_KEY_TS, Date.now().toString());
+    if (showSpinner) {
+      renderNames();
+      checkAdminSession();
+    }
+    // Load einkauf silently
+    api('getEinkauf').then(r=>{if(r&&r.items)einkaufItems=r.items;}).catch(()=>{});
+    if (showSpinner) hideLoading();
+  } catch(e) {
+    if (showSpinner) {
+      hideLoading();
+      showToast('Verbindungsfehler: ' + e.message, 'error');
+    }
+  }
+}
+
+async function loadConsumos() {
+  if (consumosLoaded) return;
+  showLoading('Einträge werden geladen…');
+  try {
+    const now = new Date();
+    const month = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+    const data = await api('getConsumos', { month });
+    state.consumos = data.consumos || [];
+    consumosLoaded = true;
+    hideLoading();
+  } catch(e) {
+    hideLoading();
+    showToast('Fehler beim Laden der Einträge: ' + e.message, 'error');
+  }
+}
+
+// Legacy getAll — still works, used for full refresh
+async function loadAll_full() {
+  showLoading('Alles wird neu geladen…');
   try {
     const data = await api('getAll');
     state.consumos  = data.consumos  || [];
     state.products  = data.products  || [];
     state.people    = data.people    || [];
     state.config    = data.config    || {pin:'1234', stock_threshold:'3'};
+    consumosLoaded = true;
+    localStorage.setItem(CACHE_KEY_BASIC, JSON.stringify({
+      products: state.products,
+      people:   state.people,
+      config:   state.config
+    }));
+    localStorage.setItem(CACHE_KEY_TS, Date.now().toString());
     renderNames();
-checkAdminSession();
-// Load einkauf from sheet on start
-api('getEinkauf').then(r=>{if(r&&r.items)einkaufItems=r.items;}).catch(()=>{});
     hideLoading();
   } catch(e) {
     hideLoading();
@@ -697,8 +774,8 @@ function showViewDirect(v){
   document.querySelectorAll('.nav-tab').forEach(t=>{const oc=t.getAttribute('onclick')||'';t.classList.toggle('active',oc.includes("'"+v+"'"));});
   syncDrawer(v);
   if(v==='register')renderNames();
-  if(v==='dashboard')renderDashboard();
-  if(v==='products')renderProducts();
+  if(v==='dashboard'){loadConsumos().then(()=>renderDashboard());}
+  if(v==='products'){loadBasicFromServer(false).then(()=>renderProducts());}
   if(v==='settings')renderSettings();
   if(v==='mein-konto')renderMeinKonto();
   if(v==='einkauf')renderEinkauf();
@@ -808,6 +885,31 @@ function renderStockAlerts(cid){
   if(low.length)h+=`<div class="alert-box warning"><div class="alert-icon">⚠️</div><div><div class="alert-title">Tiefer Lagerstand</div><div class="alert-items">${low.map(p=>`${p.name} (${p.stock} übrig)`).join(' · ')}</div></div></div>`;
   const el=document.getElementById(cid);if(el)el.innerHTML=h;
 }
+async function onMonthFilterChange(){
+  const sel=document.getElementById('dash-month-filter');
+  const val=sel?sel.value:'';
+  const now=new Date();
+  const currentMonth=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  // If selecting a different month, need to reload all consumos
+  if(val && val!==currentMonth){
+    consumosLoaded=false;
+    showLoading('Einträge werden geladen…');
+    try{
+      const data=await api('getConsumos',{month:val});
+      // Merge with existing — add new month's records
+      const existing=state.consumos.filter(r=>{
+        const d=new Date(r.timestamp);
+        const ym=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+        return ym!==val;
+      });
+      state.consumos=[...existing,...(data.consumos||[])];
+      consumosLoaded=true;
+      hideLoading();
+    }catch(e){hideLoading();showToast('Fehler: '+e.message,'error');}
+  }
+  renderDashboard();
+}
+
 function renderDashboard(){
   const months=getMonths(),mSel=document.getElementById('dash-month-filter'),pSel=document.getElementById('dash-person-filter');
   const cm=mSel.value||months[0];
@@ -1047,7 +1149,8 @@ async function saveThreshold(){
 async function refreshEinkauf(){
   showLoading('Wird aktualisiert…');
   try{
-    await loadAll();
+    await loadBasicFromServer(false);
+    consumosLoaded = false; // force reload next time dashboard opens
     buildEinkaufFromStock();
     renderEinkauf();
     hideLoading();
