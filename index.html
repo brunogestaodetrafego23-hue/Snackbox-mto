@@ -207,6 +207,42 @@
     .kpi-grid{grid-template-columns:repeat(2,1fr);}
     .product-admin-grid{grid-template-columns:1fr;}
   }
+
+  /* CANCEL / STORNIERT */
+  .btn-cancel{padding:6px 12px;font-size:12px;border-radius:6px;border:1px solid var(--orange);background:transparent;color:var(--orange);cursor:pointer;font-family:'Inter',sans-serif;font-weight:600;transition:all .15s;}
+  .btn-cancel:hover{background:rgba(240,128,64,.15);}
+  .row-cancelled td{opacity:.5;text-decoration:line-through;}
+  .row-cancelled .td-price{color:var(--muted);}
+  .storniert-section{margin-top:20px;}
+  .storniert-toggle{display:flex;align-items:center;gap:10px;cursor:pointer;padding:12px 16px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:4px;user-select:none;}
+  .storniert-toggle:hover{background:var(--surface2);}
+  .storniert-toggle .st-label{font-size:14px;font-weight:600;color:var(--muted);}
+  .storniert-toggle .st-count{font-size:12px;background:var(--surface2);padding:2px 8px;border-radius:20px;color:var(--muted);}
+  .storniert-toggle .st-arrow{margin-left:auto;color:var(--muted);transition:transform .2s;}
+  .storniert-toggle.open .st-arrow{transform:rotate(180deg);}
+  .storniert-body{display:none;}
+  .storniert-body.open{display:block;}
+
+  /* EINKAUFSLISTE */
+  .einkauf-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;display:flex;align-items:center;gap:12px;margin-bottom:8px;}
+  .einkauf-card.reservado{border-color:var(--green);background:rgba(76,175,125,.06);}
+  .einkauf-info{flex:1;}
+  .einkauf-name{font-weight:600;font-size:14px;}
+  .einkauf-sub{font-size:11px;color:var(--muted);margin-top:2px;}
+  .einkauf-qty-ctrl{display:flex;align-items:center;gap:6px;}
+  .einkauf-qty-btn{width:28px;height:28px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+  .einkauf-qty-val{font-weight:700;font-size:15px;min-width:24px;text-align:center;}
+  .einkauf-res-btn{padding:6px 12px;border-radius:6px;border:none;font-size:12px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;transition:all .15s;}
+  .einkauf-res-btn.unreserved{background:var(--surface2);color:var(--muted);border:1px solid var(--border);}
+  .einkauf-res-btn.unreserved:hover{border-color:var(--green);color:var(--green);}
+  .einkauf-res-btn.reserved{background:rgba(76,175,125,.2);color:var(--green);border:1px solid var(--green);}
+  .einkauf-remove{padding:4px 8px;border-radius:6px;border:none;background:transparent;color:var(--muted);cursor:pointer;font-size:14px;}
+  .einkauf-remove:hover{color:var(--red);}
+  .einkauf-empty{text-align:center;padding:32px;color:var(--muted);font-size:14px;}
+
+  /* CSV EXPORT OPTIONS */
+  .export-options{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+  .export-select{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);padding:7px 10px;font-size:13px;font-family:'Inter',sans-serif;}
 </style>
 </head>
 <body>
@@ -226,6 +262,7 @@
     <button class="nav-tab admin-only" onclick="showView('dashboard',event)">Dashboard</button>
     <button class="nav-tab admin-only" onclick="showView('products',event)">Produkte</button>
     <button class="nav-tab admin-only" onclick="showView('settings',event)">⚙ Einstellungen</button>
+    <button class="nav-tab admin-only" onclick="showView('einkauf',event)">🛒 Einkaufsliste</button>
   </div>
   <div style="display:flex;align-items:center;gap:8px;">
     <button class="btn-lock" id="btn-lock" onclick="toggleAdmin()">
@@ -248,6 +285,7 @@
   <button class="drawer-item" id="di-dashboard" onclick="drawerNav('dashboard')" style="display:none;"><span class="di-icon">📊</span> Dashboard</button>
   <button class="drawer-item" id="di-products"  onclick="drawerNav('products')"  style="display:none;"><span class="di-icon">📦</span> Produkte</button>
   <button class="drawer-item" id="di-settings"  onclick="drawerNav('settings')"  style="display:none;"><span class="di-icon">⚙️</span> Einstellungen</button>
+  <button class="drawer-item" id="di-einkauf" onclick="drawerNav('einkauf')" style="display:none;"><span class="di-icon">🛒</span> Einkaufsliste</button>
   <button class="drawer-logout" id="drawer-logout" onclick="logoutAdmin()" style="display:none;">🚪 Admin abmelden</button>
 </div>
 
@@ -325,7 +363,7 @@
   </div>
   <div class="table-wrap">
     <table>
-      <thead><tr><th>Datum/Zeit</th><th>Produkt</th><th>Anzahl</th><th>Betrag</th></tr></thead>
+      <thead><tr><th>Datum/Zeit</th><th>Produkt</th><th>Anz.</th><th>Betrag</th><th></th></tr></thead>
       <tbody id="mk-records"></tbody>
     </table>
   </div>
@@ -355,10 +393,23 @@
   <div class="section-title" style="font-size:14px;margin-bottom:12px;">Pro Person</div>
   <div class="table-wrap"><table><thead><tr><th>Name</th><th>Einträge</th><th>Zu bezahlen</th></tr></thead><tbody id="table-by-person"></tbody></table></div>
   <div class="section-title" style="font-size:14px;margin-bottom:12px;margin-top:20px;">Detaillierte Einträge</div>
-  <div class="table-wrap"><table><thead><tr><th>Datum/Zeit</th><th>Person</th><th>Produkt</th><th>Betrag</th><th></th></tr></thead><tbody id="table-records"></tbody></table></div>
+  <div class="table-wrap"><table><thead><tr><th>Datum/Zeit</th><th>Person</th><th>Produkt</th><th>Anz.</th><th>Betrag</th><th></th></tr></thead><tbody id="table-records"></tbody></table></div>
+  <div class="storniert-section" id="storniert-section"></div>
   <div class="close-month-box">
-    <div><strong>Monat abschliessen</strong><p>Exportiert die Monatsübersicht als CSV für die Abrechnung.</p></div>
-    <div class="btn-row"><button class="btn btn-secondary btn-sm" onclick="exportCSV()">⬇ CSV exportieren</button></div>
+    <div><strong>Export</strong><p>CSV-Export für Abrechnung. Wähle Zeitraum und Person.</p></div>
+    <div class="export-options">
+      <select id="export-period" class="export-select">
+        <option value="month">Ganzer Monat</option>
+        <option value="week1">Woche 1 (1–7)</option>
+        <option value="week2">Woche 2 (8–14)</option>
+        <option value="week3">Woche 3 (15–21)</option>
+        <option value="week4">Woche 4 (22–Ende)</option>
+      </select>
+      <select id="export-person" class="export-select">
+        <option value="all">Alle Personen</option>
+      </select>
+      <button class="btn btn-secondary btn-sm" onclick="exportCSV()">⬇ CSV exportieren</button>
+    </div>
   </div>
 </div>
 
@@ -375,6 +426,20 @@
   <div class="section-title" style="font-size:13px;color:var(--muted);margin-bottom:10px;">👥 PERSONEN</div>
   <div class="name-grid" id="admin-names" style="margin-bottom:14px;"></div>
   <div class="btn-row"><button class="btn btn-secondary btn-sm" onclick="openNameModal()">+ Person hinzufügen</button></div>
+</div>
+
+
+<!-- EINKAUFSLISTE VIEW -->
+<div class="view" id="view-einkauf">
+  <div class="section-title">🛒 Einkaufsliste
+    <button class="btn btn-secondary btn-sm" onclick="refreshEinkauf()" style="margin-left:auto;">↻ Aktualisieren</button>
+  </div>
+  <p style="color:var(--muted);font-size:13px;margin-bottom:20px;">Produkte mit tiefem Lagerstand. Bearbeite die Mengen und markiere als reserviert.</p>
+  <div id="einkauf-list"></div>
+  <div class="btn-row" style="margin-top:16px;">
+    <button class="btn btn-primary btn-sm" onclick="saveEinkaufList()">💾 Speichern</button>
+    <button class="btn btn-secondary btn-sm" onclick="addEinkaufManual()">+ Manuell hinzufügen</button>
+  </div>
 </div>
 
 <div class="view" id="view-settings">
@@ -468,6 +533,7 @@ let SCRIPT_URL = localStorage.getItem(URL_KEY) || 'https://script.google.com/mac
 let state = { consumos:[], products:[], people:[], config:{pin:'1234', stock_threshold:'3'} };
 let isAdmin=false, selectedName=null, selectedProduct=null,
     editingProductId=null, activeCat='all', pendingAdminView=null, drawerOpen=false, selectedQty=1;
+let einkaufItems=[];
 
 // ═══════════════════════════════════════════════════════
 // INIT
@@ -542,6 +608,8 @@ async function loadAll() {
     state.config    = data.config    || {pin:'1234', stock_threshold:'3'};
     renderNames();
 checkAdminSession();
+// Load einkauf from sheet on start
+api('getEinkauf').then(r=>{if(r&&r.items)einkaufItems=r.items;}).catch(()=>{});
     hideLoading();
   } catch(e) {
     hideLoading();
@@ -555,10 +623,10 @@ checkAdminSession();
 function toggleDrawer(){drawerOpen?closeDrawer():openDrawer();}
 function openDrawer(){drawerOpen=true;document.getElementById('drawer').classList.add('open');document.getElementById('drawer-overlay').classList.add('open');document.getElementById('btn-hamburger').classList.add('open');}
 function closeDrawer(){drawerOpen=false;document.getElementById('drawer').classList.remove('open');document.getElementById('drawer-overlay').classList.remove('open');document.getElementById('btn-hamburger').classList.remove('open');}
-function drawerNav(v){closeDrawer();if(['dashboard','products','settings'].includes(v)&&!isAdmin){openPinModal(v);return;}showViewDirect(v);}
-function syncDrawer(v){['register','dashboard','products','settings'].forEach(id=>{const el=document.getElementById('di-'+id);if(el)el.classList.toggle('active',id===v);});}
+function drawerNav(v){closeDrawer();if(['dashboard','products','settings','einkauf'].includes(v)&&!isAdmin){openPinModal(v);return;}showViewDirect(v);}
+function syncDrawer(v){['register','dashboard','products','settings','einkauf'].forEach(id=>{const el=document.getElementById('di-'+id);if(el)el.classList.toggle('active',id===v);});}
 function showAdminDrawer(show){
-  ['di-dashboard','di-products','di-settings','drawer-logout'].forEach(id=>{const el=document.getElementById(id);if(el)el.style.display=show?'flex':'none';});
+  ['di-dashboard','di-products','di-settings','di-einkauf','drawer-logout'].forEach(id=>{const el=document.getElementById(id);if(el)el.style.display=show?'flex':'none';});
   document.getElementById('drawer-logout').style.display=show?'block':'none';
   document.getElementById('drawer-admin-label').style.display=show?'block':'none';
 }
@@ -619,7 +687,7 @@ function logoutAdmin(){
 // NAVIGATION
 // ═══════════════════════════════════════════════════════
 function showView(v,e){
-  if(['dashboard','products','settings'].includes(v)&&!isAdmin){openPinModal(v);return;}
+  if(['dashboard','products','settings','einkauf'].includes(v)&&!isAdmin){openPinModal(v);return;}
   showViewDirect(v);
   if(e){document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));e.target.classList.add('active');}
 }
@@ -633,6 +701,7 @@ function showViewDirect(v){
   if(v==='products')renderProducts();
   if(v==='settings')renderSettings();
   if(v==='mein-konto')renderMeinKonto();
+  if(v==='einkauf')renderEinkauf();
 }
 function goStep(n){document.querySelectorAll('.step').forEach(el=>el.classList.remove('active'));document.getElementById('step-'+n).classList.add('active');if(n===2)renderProductGrid();}
 
@@ -744,10 +813,13 @@ function renderDashboard(){
   const cm=mSel.value||months[0];
   mSel.innerHTML=months.map(m=>`<option value="${m}"${m===cm?' selected':''}>${monthLabel(m)}</option>`).join('');
   const sp=pSel.value;
+  // also update export person dropdown
+  const expSel=document.getElementById('export-person');if(expSel){expSel.innerHTML='<option value="all">Alle Personen</option>'+state.people.map(p=>`<option value="${p}">${p}</option>`).join('');}
   pSel.innerHTML='<option value="all">Alle Personen</option>'+state.people.map(p=>`<option value="${p}"${p===sp?' selected':''}>${p}</option>`).join('');
   const fp=pSel.value||'all';
   let flt=state.consumos.filter(r=>{const d=new Date(r.timestamp),ym=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;return ym===cm&&(fp==='all'||r.person===fp);});
-  const tot=flt.reduce((s,r)=>s+parseFloat(r.price),0),up=new Set(flt.map(r=>r.person)).size,{out,low}=getStockAlerts();
+  const activeFlt=flt.filter(r=>(r.estado||'activo')==='activo');
+  const tot=activeFlt.reduce((s,r)=>s+parseFloat(r.price),0),up=new Set(activeFlt.map(r=>r.person)).size,{out,low}=getStockAlerts();
   document.getElementById('kpi-total').textContent=tot.toFixed(2)+' Fr';
   document.getElementById('kpi-count').textContent=flt.length;
   document.getElementById('kpi-people').textContent=up;
@@ -755,12 +827,71 @@ function renderDashboard(){
   document.getElementById('kpi-alerts').textContent=out.length+low.length;
   document.getElementById('dash-month-badge').textContent=monthLabel(cm);
   renderStockAlerts('stock-alerts-dash');
-  const bp={};flt.forEach(r=>{if(!bp[r.person])bp[r.person]={count:0,total:0};bp[r.person].count++;bp[r.person].total+=parseFloat(r.price);});
+  const bp={};activeFlt.forEach(r=>{if(!bp[r.person])bp[r.person]={count:0,total:0};bp[r.person].count++;bp[r.person].total+=parseFloat(r.price);});
   const ent=Object.entries(bp).sort((a,b)=>b[1].total-a[1].total);
   document.getElementById('table-by-person').innerHTML=ent.length?ent.map(([n,d])=>`<tr><td class="td-name">${n}</td><td class="td-muted">${d.count} Konsumation${d.count!==1?'en':''}</td><td class="td-price">${d.total.toFixed(2)} Fr</td></tr>`).join(''):`<tr><td colspan="3"><div class="empty-state"><div class="es-icon">📭</div><p>Keine Einträge für diesen Zeitraum.</p></div></td></tr>`;
   const srt=[...flt].sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp));
-  document.getElementById('table-records').innerHTML=srt.length?srt.map(r=>{const d=new Date(r.timestamp),dt=`${d.getDate().toString().padStart(2,'0')}.${(d.getMonth()+1).toString().padStart(2,'0')} ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;return`<tr><td class="td-muted">${dt}</td><td class="td-name">${r.person}</td><td>${r.productName} <span class="tag ${r.cat==='snack'?'tag-snack':'tag-drink'}">${r.cat==='snack'?'Snack':'Getränk'}</span></td><td class="td-price">${parseFloat(r.price).toFixed(2)} Fr</td><td><button class="btn btn-danger btn-sm" onclick="deleteRecord('${r.id}')">✕</button></td></tr>`;}).join(''):`<tr><td colspan="5"><div class="empty-state"><div class="es-icon">📭</div><p>Keine Einträge.</p></div></td></tr>`;
+  const activeRecords=srt.filter(r=>(r.estado||'activo')==='activo');
+  const cancelledRecords=srt.filter(r=>r.estado==='cancelado');
+  document.getElementById('table-records').innerHTML=activeRecords.length?activeRecords.map(r=>{
+    const d=new Date(r.timestamp),dt=`${d.getDate().toString().padStart(2,'0')}.${(d.getMonth()+1).toString().padStart(2,'0')} ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
+    const qty=r.qty||1;
+    return`<tr><td class="td-muted">${dt}</td><td class="td-name">${r.person}</td><td>${r.productName} <span class="tag ${r.cat==='snack'?'tag-snack':'tag-drink'}">${r.cat==='snack'?'Snack':'Getränk'}</span></td><td style="text-align:center;">${qty}</td><td class="td-price">${parseFloat(r.price).toFixed(2)} Fr</td><td style="display:flex;gap:6px;"><button class="btn-cancel" onclick="cancelRecord('${r.id}','${r.person}',true)">Storno</button><button class="btn btn-danger btn-sm" onclick="deleteRecord('${r.id}')">✕</button></td></tr>`;
+  }).join(''):`<tr><td colspan="6"><div class="empty-state"><div class="es-icon">📭</div><p>Keine Einträge.</p></div></td></tr>`;
+  // Storniert section
+  const stEl=document.getElementById('storniert-section');
+  if(stEl){
+    stEl.innerHTML=`<div class="storniert-toggle" onclick="toggleStorniert(this)">
+      <span class="st-label">🚫 Stornierte Einträge</span>
+      <span class="st-count">${cancelledRecords.length}</span>
+      <span class="st-arrow">▾</span>
+    </div>
+    <div class="storniert-body">
+      <div class="table-wrap"><table>
+        <thead><tr><th>Datum/Zeit</th><th>Person</th><th>Produkt</th><th>Anz.</th><th>Betrag</th><th>Storniert von</th><th>Storniert am</th></tr></thead>
+        <tbody>${cancelledRecords.length?cancelledRecords.map(r=>{
+          const d=new Date(r.timestamp),dt=`${d.getDate().toString().padStart(2,'0')}.${(d.getMonth()+1).toString().padStart(2,'0')} ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
+          const qty=r.qty||1;
+          let cancelledAt='';
+          if(r.canceladoEm){const cd=new Date(r.canceladoEm);cancelledAt=`${cd.getDate().toString().padStart(2,'0')}.${(cd.getMonth()+1).toString().padStart(2,'0')} ${cd.getHours().toString().padStart(2,'0')}:${cd.getMinutes().toString().padStart(2,'0')}`;}
+          return`<tr class="row-cancelled"><td class="td-muted">${dt}</td><td>${r.person}</td><td>${r.productName}</td><td style="text-align:center;">${qty}</td><td>${parseFloat(r.price).toFixed(2)} Fr</td><td class="td-muted">${r.canceladoPor||'—'}</td><td class="td-muted">${cancelledAt||'—'}</td></tr>`;
+        }).join(''):'<tr><td colspan="7"><div class="empty-state"><p>Keine stornierten Einträge.</p></div></td></tr>'}</tbody>
+      </table></div>
+    </div>`;
+  }
 }
+function toggleStorniert(el){
+  el.classList.toggle('open');
+  const body=el.nextElementSibling;
+  body.classList.toggle('open');
+}
+
+async function cancelRecord(id, person, isAdmin){
+  const cancelledBy = isAdmin ? 'Admin' : (selectedName || person);
+  if(!confirm(`Eintrag von ${person} stornieren? Stock wird zurückgesetzt.`))return;
+  showLoading('Wird storniert…');
+  try{
+    const res=await api('cancelConsumo',{id, canceladoPor: cancelledBy});
+    if(res.ok){
+      const r=state.consumos.find(x=>String(x.id)===String(id));
+      if(r){
+        r.estado='cancelado';
+        r.canceladoPor=cancelledBy;
+        r.canceladoEm=res.canceladoEm||new Date().toISOString();
+        // restore stock locally
+        const prod=state.products.find(p=>p.id===r.productId);
+        if(prod)prod.stock=Math.min(99,(prod.stock||0)+(r.qty||1));
+      }
+      hideLoading();
+      renderDashboard();
+      showToast('Eintrag storniert. Stock wiederhergestellt.');
+    } else {
+      hideLoading();
+      showToast('Fehler: '+(res.error||'unbekannt'),'error');
+    }
+  }catch(e){hideLoading();showToast('Fehler: '+e.message,'error');}
+}
+
 async function deleteRecord(id){
   if(!confirm('Diesen Eintrag löschen?'))return;
   showLoading('Wird gelöscht…');
@@ -777,20 +908,32 @@ function renderMeinKonto(){
     const ym=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
     return r.person===selectedName&&ym===cm;
   }).sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp));
-  const total=myRecords.reduce((s,r)=>s+parseFloat(r.price),0);
+  const total=myRecords.filter(r=>(r.estado||'activo')==='activo').reduce((s,r)=>s+parseFloat(r.price),0);
   document.getElementById('mk-total').textContent=total.toFixed(2)+' Fr';
   document.getElementById('mk-count').textContent=myRecords.length;
   document.getElementById('mk-records').innerHTML=myRecords.length?myRecords.map(r=>{
     const d=new Date(r.timestamp);
     const dt=d.getDate().toString().padStart(2,'0')+'.'+( d.getMonth()+1).toString().padStart(2,'0')+' '+d.getHours().toString().padStart(2,'0')+':'+d.getMinutes().toString().padStart(2,'0');
     const qty=r.qty||1;
-    return`<tr><td class="td-muted">${dt}</td><td>${r.productName}</td><td style="text-align:center;">${qty}</td><td class="td-price">${parseFloat(r.price).toFixed(2)} Fr</td></tr>`;
+    const isToday=new Date(r.timestamp).toDateString()===new Date().toDateString();
+    const cancelBtn=isToday&&(r.estado||'activo')==='activo'?`<button class="btn-cancel" onclick="cancelRecord('${r.id}','${r.person}',false)" style="font-size:11px;">Storno</button>`:'';
+    const rowClass=(r.estado==='cancelado')?'class="row-cancelled"':'';
+    return`<tr ${rowClass}><td class="td-muted">${dt}</td><td>${r.productName}</td><td style="text-align:center;">${qty}</td><td class="td-price">${parseFloat(r.price).toFixed(2)} Fr</td><td>${cancelBtn}</td></tr>`;
   }).join(''):`<tr><td colspan="4"><div class="empty-state"><div class="es-icon">📭</div><p>Noch keine Konsumationen diesen Monat.</p></div></td></tr>`;
 }
+function getWeekRange(month, week) {
+  const [y,m] = month.split('-');
+  const starts = [1, 8, 15, 22];
+  const ends   = [7, 14, 21, 31];
+  const start = starts[week-1];
+  const endDay = week === 4 ? new Date(parseInt(y), parseInt(m), 0).getDate() : ends[week-1];
+  return { start, end: endDay };
+}
+
 function exportCSV(){
   const cm=document.getElementById('dash-month-filter').value;
   const flt=state.consumos.filter(r=>{const d=new Date(r.timestamp);return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`===cm;});
-  const bp={};flt.forEach(r=>{if(!bp[r.person])bp[r.person]={count:0,total:0};bp[r.person].count++;bp[r.person].total+=parseFloat(r.price);});
+  const bp={};activeFlt.forEach(r=>{if(!bp[r.person])bp[r.person]={count:0,total:0};bp[r.person].count++;bp[r.person].total+=parseFloat(r.price);});
   let csv='MONATSÜBERSICHT - '+monthLabel(cm)+'\n\nName,Einträge,Gesamt (Fr)\n';
   Object.entries(bp).sort((a,b)=>b[1].total-a[1].total).forEach(([n,d])=>csv+=`${n},${d.count},${d.total.toFixed(2)}\n`);
   csv+='\n\nDETAILÜBERSICHT\nDatum,Zeit,Person,Produkt,Kategorie,Betrag (Fr)\n';
@@ -896,6 +1039,103 @@ async function saveThreshold(){
   if(isNaN(v)||v<1){alert('Ungültiger Wert.');return;}
   try{await api('saveConfig',{key:'stock_threshold',value:v});state.config.stock_threshold=String(v);showToast(`Warnschwelle: ${v} Stück`);}
   catch(e){showToast('Fehler: '+e.message,'error');}
+}
+
+// ═══════════════════════════════════════════════════════
+// EINKAUFSLISTE
+// ═══════════════════════════════════════════════════════
+async function refreshEinkauf(){
+  showLoading('Wird aktualisiert…');
+  try{
+    await loadAll();
+    buildEinkaufFromStock();
+    renderEinkauf();
+    hideLoading();
+    showToast('Einkaufsliste aktualisiert!');
+  }catch(e){hideLoading();showToast('Fehler: '+e.message,'error');}
+}
+
+function buildEinkaufFromStock(){
+  const thr=parseInt(state.config.stock_threshold)||3;
+  const lowItems=state.products.filter(p=>(p.stock??99)<=thr);
+  // merge with existing einkaufItems — keep reservations
+  const existing={};
+  einkaufItems.forEach(i=>{existing[i.productId]=i;});
+  einkaufItems=lowItems.map(p=>{
+    const ex=existing[p.id];
+    return{
+      productId:p.id, productName:p.name, cat:p.cat,
+      stockAtual:p.stock, qtyComprar:ex?ex.qtyComprar:Math.max(1,thr-p.stock+2),
+      reservado:ex?ex.reservado:false, reservadoEm:ex?ex.reservadoEm:''
+    };
+  });
+  // keep manually added items not in low stock
+  Object.values(existing).forEach(ex=>{
+    if(!einkaufItems.find(i=>i.productId===ex.productId)){
+      einkaufItems.push(ex);
+    }
+  });
+}
+
+function renderEinkauf(){
+  const thr=parseInt(state.config.stock_threshold)||3;
+  // also auto-build from current stock
+  if(einkaufItems.length===0)buildEinkaufFromStock();
+  const el=document.getElementById('einkauf-list');
+  if(!el)return;
+  if(einkaufItems.length===0){
+    el.innerHTML='<div class="einkauf-empty">✅ Kein Nachkaufbedarf. Alle Produkte haben genug Lagerbestand.</div>';
+    return;
+  }
+  el.innerHTML=einkaufItems.map((item,idx)=>{
+    const stockClass=item.stockAtual===0?'out':item.stockAtual<=thr?'low':'ok';
+    const stockColor=stockClass==='out'?'var(--red)':stockClass==='low'?'var(--orange)':'var(--green)';
+    return`<div class="einkauf-card${item.reservado?' reservado':''}" id="ei-${idx}">
+      <div class="einkauf-info">
+        <div class="einkauf-name">${item.productName}</div>
+        <div class="einkauf-sub">${item.cat==='snack'?'🍫 Snack':'🥤 Getränk'} · Lager: <span style="color:${stockColor};font-weight:600;">${item.stockAtual}</span></div>
+      </div>
+      <div class="einkauf-qty-ctrl">
+        <button class="einkauf-qty-btn" onclick="einkaufQty(${idx},-1)">−</button>
+        <span class="einkauf-qty-val">${item.qtyComprar}</span>
+        <button class="einkauf-qty-btn" onclick="einkaufQty(${idx},1)">+</button>
+      </div>
+      <button class="einkauf-res-btn ${item.reservado?'reserved':'unreserved'}" onclick="einkaufToggleRes(${idx})">
+        ${item.reservado?'✓ Reserviert':'Reservieren'}
+      </button>
+      <button class="einkauf-remove" onclick="einkaufRemove(${idx})" title="Entfernen">✕</button>
+    </div>`;
+  }).join('');
+}
+
+function einkaufQty(idx,delta){
+  einkaufItems[idx].qtyComprar=Math.max(1,(einkaufItems[idx].qtyComprar||1)+delta);
+  renderEinkauf();
+}
+function einkaufToggleRes(idx){
+  einkaufItems[idx].reservado=!einkaufItems[idx].reservado;
+  einkaufItems[idx].reservadoEm=einkaufItems[idx].reservado?new Date().toISOString():'';
+  renderEinkauf();
+}
+function einkaufRemove(idx){
+  einkaufItems.splice(idx,1);
+  renderEinkauf();
+}
+function addEinkaufManual(){
+  if(state.products.length===0){showToast('Produkte laden…','warn');return;}
+  const name=prompt('Produktname (oder leer für Auswahl):');
+  if(name===null)return;
+  const prod=state.products.find(p=>p.name.toLowerCase().includes(name.toLowerCase()))||state.products[0];
+  einkaufItems.push({productId:prod.id,productName:name||prod.name,cat:prod.cat,stockAtual:prod.stock,qtyComprar:5,reservado:false,reservadoEm:''});
+  renderEinkauf();
+}
+async function saveEinkaufList(){
+  showLoading('Wird gespeichert…');
+  try{
+    await api('saveEinkauf',{items:einkaufItems});
+    hideLoading();
+    showToast('Einkaufsliste gespeichert!');
+  }catch(e){hideLoading();showToast('Fehler: '+e.message,'error');}
 }
 
 // ═══════════════════════════════════════════════════════
