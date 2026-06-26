@@ -378,6 +378,7 @@
 
 <div class="view" id="view-dashboard">
   <div class="section-title">Dashboard <span class="badge" id="dash-month-badge">—</span></div>
+  <div id="maintenance-warning" style="display:none;"></div>
   <div id="stock-alerts-dash"></div>
   <div class="kpi-grid">
     <div class="kpi-card"><div class="kpi-label">Monatsgesamt</div><div class="kpi-value accent" id="kpi-total">0.00 Fr</div><div class="kpi-sub">an Konsumationen</div></div>
@@ -530,7 +531,7 @@ const USER_KEY = 'snackbox_user_identity';
 const DEFAULT_THRESHOLD = 3;
 
 let SCRIPT_URL = localStorage.getItem(URL_KEY) || 'https://script.google.com/macros/s/AKfycbwgFaBK4QQtXUNj_bIhjccVoZ4UYtjvgIkY_UlM0xV47EgQh3mIfiD8n_VMNBVbCEhC/exec';
-let state = { consumos:[], products:[], people:[], config:{pin:'1234', stock_threshold:'3'} };
+let state = { consumos:[], products:[], people:[], config:{pin:'1234', stock_threshold:'3'}, consumosLoaded: null, _maintenanceWarning: null, _archiveMonths: [] };
 let isAdmin=false, selectedName=null, selectedProduct=null,
     editingProductId=null, activeCat='all', pendingAdminView=null, drawerOpen=false, selectedQty=1;
 let einkaufItems=[];
@@ -598,99 +599,51 @@ async function api(action, body={}) {
   return data;
 }
 
-// Cache TTL: 5 minutes
-const CACHE_TTL = 5 * 60 * 1000;
-const CACHE_KEY_BASIC = 'snackbox_cache_basic';
-const CACHE_KEY_TS    = 'snackbox_cache_ts';
-let consumosLoaded = false;
-
+// ── Carrega apenas dados base (produtos, pessoas, config) — rápido ──
 async function loadAll() {
-  // Try cache first — show UI immediately
-  try {
-    const cached = localStorage.getItem(CACHE_KEY_BASIC);
-    const ts     = parseInt(localStorage.getItem(CACHE_KEY_TS) || '0');
-    if (cached && Date.now() - ts < CACHE_TTL) {
-      const data = JSON.parse(cached);
-      state.products = data.products || [];
-      state.people   = data.people   || [];
-      state.config   = data.config   || {pin:'1234', stock_threshold:'3'};
-      renderNames();
-      checkAdminSession();
-      // Refresh in background silently
-      loadBasicFromServer(false);
-      return;
-    }
-  } catch(e) {}
-  // No cache — load from server with spinner
-  await loadBasicFromServer(true);
-}
-
-async function loadBasicFromServer(showSpinner) {
-  if (showSpinner) showLoading('Daten werden geladen…');
+  showLoading('Daten werden geladen…');
   try {
     const data = await api('getBasicData');
-    state.products = data.products || [];
-    state.people   = data.people   || [];
-    state.config   = data.config   || {pin:'1234', stock_threshold:'3'};
-    // Save to cache
-    localStorage.setItem(CACHE_KEY_BASIC, JSON.stringify({
-      products: state.products,
-      people:   state.people,
-      config:   state.config
-    }));
-    localStorage.setItem(CACHE_KEY_TS, Date.now().toString());
-    if (showSpinner) {
-      renderNames();
-      checkAdminSession();
-    }
-    // Load einkauf silently
-    api('getEinkauf').then(r=>{if(r&&r.items)einkaufItems=r.items;}).catch(()=>{});
-    if (showSpinner) hideLoading();
-  } catch(e) {
-    if (showSpinner) {
-      hideLoading();
-      showToast('Verbindungsfehler: ' + e.message, 'error');
-    }
-  }
-}
-
-async function loadConsumos() {
-  if (consumosLoaded) return;
-  showLoading('Einträge werden geladen…');
-  try {
-    const now = new Date();
-    const month = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
-    const data = await api('getConsumos', { month });
-    state.consumos = data.consumos || [];
-    consumosLoaded = true;
-    hideLoading();
-  } catch(e) {
-    hideLoading();
-    showToast('Fehler beim Laden der Einträge: ' + e.message, 'error');
-  }
-}
-
-// Legacy getAll — still works, used for full refresh
-async function loadAll_full() {
-  showLoading('Alles wird neu geladen…');
-  try {
-    const data = await api('getAll');
-    state.consumos  = data.consumos  || [];
     state.products  = data.products  || [];
     state.people    = data.people    || [];
     state.config    = data.config    || {pin:'1234', stock_threshold:'3'};
-    consumosLoaded = true;
-    localStorage.setItem(CACHE_KEY_BASIC, JSON.stringify({
-      products: state.products,
-      people:   state.people,
-      config:   state.config
-    }));
-    localStorage.setItem(CACHE_KEY_TS, Date.now().toString());
+    // consumos ficam vazios até o Dashboard ser aberto
+    state.consumos  = [];
+    state.consumosLoaded = null; // mês que está em cache
     renderNames();
+    checkAdminSession();
+    api('getEinkauf').then(r=>{if(r&&r.items)einkaufItems=r.items;}).catch(()=>{});
+    // Aviso de manutenção se sheet grande
+    checkMaintenanceWarning();
     hideLoading();
   } catch(e) {
     hideLoading();
     showToast('Verbindungsfehler: ' + e.message, 'error');
+  }
+}
+
+// ── Carrega consumos de um mês específico (lazy, só quando necessário) ──
+async function loadConsumosByMonth(month) {
+  if (state.consumosLoaded === month) return; // já em cache
+  showLoading('Dashboard wird geladen…');
+  try {
+    const data = await api('getConsumos', { month });
+    state.consumos = data.consumos || [];
+    state.consumosLoaded = month;
+    hideLoading();
+  } catch(e) {
+    hideLoading();
+    showToast('Fehler beim Laden der Daten: ' + e.message, 'error');
+    throw e;
+  }
+}
+
+// ── Aviso de manutenção ──
+function checkMaintenanceWarning() {
+  const count = parseInt(state.config._consumosCount) || 0;
+  if (count > 500) {
+    // Guarda para mostrar no Dashboard
+    state._maintenanceWarning = count;
   }
 }
 
@@ -774,8 +727,8 @@ function showViewDirect(v){
   document.querySelectorAll('.nav-tab').forEach(t=>{const oc=t.getAttribute('onclick')||'';t.classList.toggle('active',oc.includes("'"+v+"'"));});
   syncDrawer(v);
   if(v==='register')renderNames();
-  if(v==='dashboard'){loadConsumos().then(()=>renderDashboard());}
-  if(v==='products'){loadBasicFromServer(false).then(()=>renderProducts());}
+  if(v==='dashboard')renderDashboard();
+  if(v==='products')renderProducts();
   if(v==='settings')renderSettings();
   if(v==='mein-konto')renderMeinKonto();
   if(v==='einkauf')renderEinkauf();
@@ -874,8 +827,84 @@ function continueRegister(){
 // ═══════════════════════════════════════════════════════
 function getMonths(){
   const m=new Set(state.consumos.map(r=>{const d=new Date(r.timestamp);return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;}));
-  const n=new Date();m.add(`${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}`);
+  const n=new Date();
+  m.add(`${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}`);
+  // Adiciona meses anteriores conhecidos via _archiveMonths se disponível
+  if (state._archiveMonths) state._archiveMonths.forEach(mo => m.add(mo));
   return Array.from(m).sort().reverse();
+}
+
+// ── Aviso de manutenção no Dashboard ──
+function renderMaintenanceWarning() {
+  const count = state._maintenanceWarning || 0;
+  const el = document.getElementById('maintenance-warning');
+  if (!el) return;
+  if (count > 500) {
+    el.innerHTML = `
+      <div class="alert-box warning" style="margin-bottom:16px;">
+        <div class="alert-icon">🗄️</div>
+        <div style="flex:1;">
+          <div class="alert-title">Datenpflege empfohlen</div>
+          <div class="alert-items">Die Haupttabelle hat <strong>${count}</strong> Einträge. 
+          Ältere Monate archivieren verbessert die Ladezeit.</div>
+        </div>
+        <button class="btn btn-secondary btn-sm" onclick="openArchiveModal()" style="flex-shrink:0;margin-left:12px;">
+          🗄️ Archivieren
+        </button>
+      </div>`;
+    el.style.display = 'block';
+  } else {
+    el.style.display = 'none';
+  }
+}
+
+async function openArchiveModal() {
+  showLoading('Statistiken werden geladen…');
+  try {
+    const stats = await api('getArchiveStats');
+    hideLoading();
+    const months = stats.months || [];
+    // Remove o mês actual
+    const now = new Date();
+    const curMonth = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+    const archivable = months.filter(m => m < curMonth);
+    if (archivable.length === 0) {
+      alert('Keine älteren Monate zum Archivieren gefunden.');
+      return;
+    }
+    const byMonth = stats.byMonth || {};
+    const options = archivable.map(m => `${monthLabel(m)}: ${byMonth[m]||0} Einträge`).join('\n');
+    const choice = prompt(
+      `Welchen Monat archivieren?\n\n${options}\n\nMonat eingeben (z.B. 2025-03):`
+    );
+    if (!choice) return;
+    const trimmed = choice.trim();
+    if (!archivable.includes(trimmed)) {
+      alert('Ungültiger Monat.');
+      return;
+    }
+    if (!confirm(`${monthLabel(trimmed)} archivieren? Die Einträge werden in eine separate Tabelle verschoben und bleiben erhalten.`)) return;
+    showLoading('Wird archiviert…');
+    const res = await api('archiveMonth', { month: trimmed });
+    hideLoading();
+    if (res.ok) {
+      showToast(`${res.archived} Einträge aus ${monthLabel(trimmed)} archiviert.`);
+      // Limpa cache e recarrega
+      state.consumosLoaded = null;
+      state._maintenanceWarning = null;
+      await loadAll();
+    } else {
+      showToast('Fehler: ' + (res.error || 'unbekannt'), 'error');
+    }
+  } catch(e) {
+    hideLoading();
+    showToast('Fehler: ' + e.message, 'error');
+  }
+}
+function onMonthFilterChange(){
+  // Invalida cache para forçar novo carregamento do mês seleccionado
+  state.consumosLoaded = null;
+  renderDashboard();
 }
 function monthLabel(ym){const[y,m]=ym.split('-');return['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'][parseInt(m)-1]+' '+y;}
 function getStockAlerts(){const thr=parseInt(state.config.stock_threshold)||DEFAULT_THRESHOLD;return{out:state.products.filter(p=>(p.stock??99)===0),low:state.products.filter(p=>{const s=p.stock??99;return s>0&&s<=thr;})};}
@@ -885,34 +914,18 @@ function renderStockAlerts(cid){
   if(low.length)h+=`<div class="alert-box warning"><div class="alert-icon">⚠️</div><div><div class="alert-title">Tiefer Lagerstand</div><div class="alert-items">${low.map(p=>`${p.name} (${p.stock} übrig)`).join(' · ')}</div></div></div>`;
   const el=document.getElementById(cid);if(el)el.innerHTML=h;
 }
-async function onMonthFilterChange(){
-  const sel=document.getElementById('dash-month-filter');
-  const val=sel?sel.value:'';
-  const now=new Date();
-  const currentMonth=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
-  // If selecting a different month, need to reload all consumos
-  if(val && val!==currentMonth){
-    consumosLoaded=false;
-    showLoading('Einträge werden geladen…');
-    try{
-      const data=await api('getConsumos',{month:val});
-      // Merge with existing — add new month's records
-      const existing=state.consumos.filter(r=>{
-        const d=new Date(r.timestamp);
-        const ym=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-        return ym!==val;
-      });
-      state.consumos=[...existing,...(data.consumos||[])];
-      consumosLoaded=true;
-      hideLoading();
-    }catch(e){hideLoading();showToast('Fehler: '+e.message,'error');}
-  }
-  renderDashboard();
-}
+async function renderDashboard(){
+  // Lazy load: carrega consumos do mês seleccionado se ainda não em cache
+  const nowMonth = (()=>{const n=new Date();return`${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}`;})();
+  const mSelPre = document.getElementById('dash-month-filter');
+  const targetMonth = (mSelPre && mSelPre.value) ? mSelPre.value : nowMonth;
+  try { await loadConsumosByMonth(targetMonth); } catch(e) { return; }
 
-function renderDashboard(){
+  // Aviso de manutenção
+  renderMaintenanceWarning();
+
   const months=getMonths(),mSel=document.getElementById('dash-month-filter'),pSel=document.getElementById('dash-person-filter');
-  const cm=mSel.value||months[0];
+  const cm=state.consumosLoaded || targetMonth;
   mSel.innerHTML=months.map(m=>`<option value="${m}"${m===cm?' selected':''}>${monthLabel(m)}</option>`).join('');
   const sp=pSel.value;
   // also update export person dropdown
@@ -1034,13 +1047,31 @@ function getWeekRange(month, week) {
 
 function exportCSV(){
   const cm=document.getElementById('dash-month-filter').value;
-  const flt=state.consumos.filter(r=>{const d=new Date(r.timestamp);return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`===cm;});
+  const personFilter=document.getElementById('export-person').value||'all';
+  const period=document.getElementById('export-period').value||'month';
+  let flt=state.consumos.filter(r=>{
+    const d=new Date(r.timestamp);
+    const ym=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    if(ym!==cm)return false;
+    if(personFilter!=='all'&&r.person!==personFilter)return false;
+    if(period!=='month'){
+      const day=d.getDate();
+      const ranges={week1:[1,7],week2:[8,14],week3:[15,21],week4:[22,31]};
+      const[s,e]=ranges[period]||[1,31];
+      if(day<s||day>e)return false;
+    }
+    return true;
+  });
+  const activeFlt=flt.filter(r=>(r.estado||'activo')==='activo');
   const bp={};activeFlt.forEach(r=>{if(!bp[r.person])bp[r.person]={count:0,total:0};bp[r.person].count++;bp[r.person].total+=parseFloat(r.price);});
   let csv='MONATSÜBERSICHT - '+monthLabel(cm)+'\n\nName,Einträge,Gesamt (Fr)\n';
   Object.entries(bp).sort((a,b)=>b[1].total-a[1].total).forEach(([n,d])=>csv+=`${n},${d.count},${d.total.toFixed(2)}\n`);
-  csv+='\n\nDETAILÜBERSICHT\nDatum,Zeit,Person,Produkt,Kategorie,Betrag (Fr)\n';
-  flt.sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp)).forEach(r=>{const d=new Date(r.timestamp);csv+=`${d.getDate().toString().padStart(2,'0')}.${(d.getMonth()+1).toString().padStart(2,'0')}.${d.getFullYear()},${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')},${r.person},"${r.productName}",${r.cat},${parseFloat(r.price).toFixed(2)}\n`;});
-  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));a.download=`snackbox_${cm}.csv`;a.click();showToast('CSV exportiert!');
+  csv+='\n\nDETAILÜBERSICHT\nDatum,Zeit,Person,Produkt,Kategorie,Anzahl,Betrag (Fr),Status\n';
+  flt.sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp)).forEach(r=>{
+    const d=new Date(r.timestamp);
+    csv+=`${d.getDate().toString().padStart(2,'0')}.${(d.getMonth()+1).toString().padStart(2,'0')}.${d.getFullYear()},${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')},${r.person},"${r.productName}",${r.cat},${r.qty||1},${parseFloat(r.price).toFixed(2)},${r.estado||'activo'}\n`;
+  });
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8;'}));a.download=`snackbox_${cm}.csv`;a.click();showToast('CSV exportiert!');
 }
 
 // ═══════════════════════════════════════════════════════
@@ -1149,8 +1180,7 @@ async function saveThreshold(){
 async function refreshEinkauf(){
   showLoading('Wird aktualisiert…');
   try{
-    await loadBasicFromServer(false);
-    consumosLoaded = false; // force reload next time dashboard opens
+    await loadAll();
     buildEinkaufFromStock();
     renderEinkauf();
     hideLoading();
