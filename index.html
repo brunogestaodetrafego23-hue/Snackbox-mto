@@ -469,6 +469,9 @@
   <div class="section-title" style="font-size:13px;color:var(--muted);margin-bottom:10px;">👥 PERSONEN</div>
   <div class="name-grid" id="admin-names" style="margin-bottom:14px;"></div>
   <div class="btn-row"><button class="btn btn-secondary btn-sm" onclick="openNameModal()">+ Person hinzufügen</button></div>
+  <div class="divider"></div>
+  <div class="section-title" style="font-size:13px;color:var(--muted);margin-bottom:10px;">📦 INAKTIVE PRODUKTE</div>
+  <div class="product-admin-grid" id="admin-inactive-products"></div>
 </div>
 
 
@@ -540,6 +543,7 @@
   </table></div>
   <div class="btn-row" style="margin-top:12px;">
     <button class="btn btn-secondary btn-sm" onclick="openCompraModal()">+ Einkauf erfassen</button>
+    <button class="btn btn-secondary btn-sm" onclick="openFundoModal()">💰 Kassenfonds anpassen</button>
   </div>
 </div>
 
@@ -622,6 +626,63 @@
   </div>
 </div>
 
+<!-- MODAL FUNDO DE CAIXA -->
+<div class="modal-overlay hidden" id="modal-fundo">
+  <div class="modal">
+    <h3>Kassenfonds anpassen</h3>
+    <div class="modal-sub">Startkapital oder manuelle Korrektur der Kasse</div>
+    <div class="form-group"><label>Typ</label>
+      <select id="input-fundo-tipo">
+        <option value="ajuste">Korrektur</option>
+        <option value="inicial">Startkapital</option>
+      </select>
+    </div>
+    <div class="form-group"><label>Betrag (Fr) — negativ für Entnahme</label><input type="number" id="input-fundo-valor" placeholder="100.00" step="0.05"></div>
+    <div class="form-group"><label>Notiz (optional)</label><input type="text" id="input-fundo-nota" placeholder="z.B. Anfangskapital Juni"></div>
+    <div class="btn-row">
+      <button class="btn btn-secondary" onclick="closeModal('modal-fundo')">Abbrechen</button>
+      <button class="btn btn-primary" onclick="saveFundo()">Speichern</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL CONFIRMAR COMPRA (Einkaufsliste) -->
+<div class="modal-overlay hidden" id="modal-confirm-purchase">
+  <div class="modal">
+    <h3 id="modal-confirm-purchase-title">Einkauf bestätigen</h3>
+    <div class="modal-sub" id="modal-confirm-purchase-sub"></div>
+    <div class="form-group"><label>Tatsächlich bezahlter Betrag (Fr)</label><input type="number" id="input-confpur-valor" step="0.05" min="0"></div>
+    <div class="form-group"><label>Datum</label><input type="date" id="input-confpur-data"></div>
+    <div class="form-group"><label>Notiz (optional)</label><input type="text" id="input-confpur-nota" placeholder="z.B. Quittung Nr. 123"></div>
+    <div class="btn-row">
+      <button class="btn btn-secondary" onclick="closeModal('modal-confirm-purchase')">Abbrechen</button>
+      <button class="btn btn-primary" onclick="saveConfirmPurchase()">Bestätigen — Lager aktualisieren</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL DESACTIVAR / SUBSTITUIR PRODUTO -->
+<div class="modal-overlay hidden" id="modal-deactivate">
+  <div class="modal">
+    <h3 id="modal-deactivate-title">Produkt ersetzen</h3>
+    <div class="modal-sub">Das Produkt wird deaktiviert (Verlauf bleibt erhalten) und kann optional sofort durch ein neues ersetzt werden.</div>
+    <div class="form-group" style="display:flex;align-items:center;gap:8px;">
+      <input type="checkbox" id="input-replace-create" onchange="toggleReplaceFields()" style="width:auto;">
+      <label style="margin:0;">Sofort durch neues Produkt ersetzen</label>
+    </div>
+    <div id="replace-new-fields" style="display:none;">
+      <div class="form-group"><label>Neuer Produktname</label><input type="text" id="input-replace-name" placeholder="z.B. neue Chips-Sorte"></div>
+      <div class="form-group"><label>Verkaufspreis (Fr)</label><input type="number" id="input-replace-price" step="0.10"></div>
+      <div class="form-group"><label>Einkaufspreis (Fr)</label><input type="number" id="input-replace-cost" step="0.05"></div>
+      <div class="form-group"><label>Lagerbestand (Stück)</label><input type="number" id="input-replace-stock"></div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-secondary" onclick="closeModal('modal-deactivate')">Abbrechen</button>
+      <button class="btn btn-primary" onclick="confirmDeactivate()">Bestätigen</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL ZAHLUNG -->
 <div class="modal-overlay hidden" id="modal-zahlung">
   <div class="modal">
@@ -654,7 +715,7 @@ const USER_KEY = 'snackbox_user_identity';
 const DEFAULT_THRESHOLD = 3;
 
 let SCRIPT_URL = localStorage.getItem(URL_KEY) || 'https://script.google.com/macros/s/AKfycbwgFaBK4QQtXUNj_bIhjccVoZ4UYtjvgIkY_UlM0xV47EgQh3mIfiD8n_VMNBVbCEhC/exec';
-let state = { consumos:[], products:[], people:[], config:{pin:'1234', stock_threshold:'3'}, pagamentos:[], compras:[] };
+let state = { consumos:[], products:[], people:[], config:{pin:'1234', stock_threshold:'3'}, pagamentos:[], compras:[], consumosLoaded:null };
 let isAdmin=false, selectedName=null, selectedProduct=null,
     editingProductId=null, activeCat='all', pendingAdminView=null, drawerOpen=false, selectedQty=1,
     pendingZahlungPerson=null, pendingZahlungMonth=null;
@@ -726,13 +787,14 @@ async function api(action, body={}) {
 async function loadAll() {
   showLoading('Daten werden geladen…');
   try {
-    const data = await api('getAll');
-    state.consumos   = data.consumos   || [];
+    const data = await api('getBasicData');
     state.products   = data.products   || [];
     state.people     = data.people     || [];
     state.config     = data.config     || {pin:'1234', stock_threshold:'3'};
     state.pagamentos = data.pagamentos || [];
     state.compras    = data.compras    || [];
+    state.consumos   = [];
+    state.consumosLoaded = null;
     renderNames();
 checkAdminSession();
 api('getEinkauf').then(r=>{if(r&&r.items)einkaufItems=r.items;}).catch(()=>{});
@@ -740,6 +802,19 @@ api('getEinkauf').then(r=>{if(r&&r.items)einkaufItems=r.items;}).catch(()=>{});
   } catch(e) {
     hideLoading();
     showToast('Verbindungsfehler: ' + e.message, 'error');
+  }
+}
+
+// ── Carrega consumos de um mês (lazy — só quando Dashboard/Kasse/Zahlungen abrem) ──
+async function loadConsumosByMonth(month) {
+  if (state.consumosLoaded === month) return;
+  try {
+    const data = await api('getConsumos', { month });
+    state.consumos = data.consumos || [];
+    state.consumosLoaded = month;
+  } catch(e) {
+    showToast('Fehler beim Laden: ' + e.message, 'error');
+    throw e;
   }
 }
 
@@ -817,19 +892,19 @@ function showView(v,e){
   showViewDirect(v);
   if(e){document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));e.target.classList.add('active');}
 }
-function showViewDirect(v){
+async function showViewDirect(v){
   document.querySelectorAll('.view').forEach(el=>el.classList.remove('active'));
   document.getElementById('view-'+v).classList.add('active');
   document.querySelectorAll('.nav-tab').forEach(t=>{const oc=t.getAttribute('onclick')||'';t.classList.toggle('active',oc.includes("'"+v+"'"));});
   syncDrawer(v);
   if(v==='register')renderNames();
-  if(v==='dashboard')renderDashboard();
+  if(v==='dashboard')await renderDashboard();
   if(v==='products')renderProducts();
   if(v==='settings')renderSettings();
   if(v==='mein-konto')renderMeinKonto();
   if(v==='einkauf')renderEinkauf();
-  if(v==='kasse')renderKasse();
-  if(v==='zahlungen')renderZahlungen();
+  if(v==='kasse')await renderKasse();
+  if(v==='zahlungen')await renderZahlungen();
 }
 function goStep(n){document.querySelectorAll('.step').forEach(el=>el.classList.remove('active'));document.getElementById('step-'+n).classList.add('active');if(n===2)renderProductGrid();}
 
@@ -865,7 +940,8 @@ function resetUserIdentity(){
 }
 function renderProductGrid(){
   const thr=parseInt(state.config.stock_threshold)||DEFAULT_THRESHOLD;
-  const prods=activeCat==='all'?state.products:state.products.filter(p=>p.cat===activeCat);
+  const visible=state.products.filter(p=>(p.status||'ativo')!=='inativo');
+  const prods=activeCat==='all'?visible:visible.filter(p=>p.cat===activeCat);
   document.getElementById('product-grid').innerHTML=prods.map(p=>{
     const s=p.stock??99,out=s===0,low=s>0&&s<=thr;
     const sl=out?`<span class="p-stock out">Ausverkauft</span>`:low?`<span class="p-stock low">⚠ Noch ${s} übrig</span>`:`<span class="p-stock ok">✓ ${s} verfügbar</span>`;
@@ -924,8 +1000,13 @@ function continueRegister(){
 // DASHBOARD
 // ═══════════════════════════════════════════════════════
 function getMonths(){
-  const m=new Set(state.consumos.map(r=>{const d=new Date(r.timestamp);return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;}));
-  const n=new Date();m.add(`${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}`);
+  // Independente do que já está carregado (lazy load) — gera os últimos 12 meses
+  const m=new Set();
+  const n=new Date();
+  for(let i=0;i<12;i++){
+    const d=new Date(n.getFullYear(),n.getMonth()-i,1);
+    m.add(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`);
+  }
   return Array.from(m).sort().reverse();
 }
 function monthLabel(ym){const[y,m]=ym.split('-');return['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'][parseInt(m)-1]+' '+y;}
@@ -936,9 +1017,10 @@ function renderStockAlerts(cid){
   if(low.length)h+=`<div class="alert-box warning"><div class="alert-icon">⚠️</div><div><div class="alert-title">Tiefer Lagerstand</div><div class="alert-items">${low.map(p=>`${p.name} (${p.stock} übrig)`).join(' · ')}</div></div></div>`;
   const el=document.getElementById(cid);if(el)el.innerHTML=h;
 }
-function renderDashboard(){
+async function renderDashboard(){
   const months=getMonths(),mSel=document.getElementById('dash-month-filter'),pSel=document.getElementById('dash-person-filter');
   const cm=mSel.value||months[0];
+  try{ await loadConsumosByMonth(cm); }catch(e){ return; }
   mSel.innerHTML=months.map(m=>`<option value="${m}"${m===cm?' selected':''}>${monthLabel(m)}</option>`).join('');
   const sp=pSel.value;
   // also update export person dropdown
@@ -1078,6 +1160,7 @@ function renderProducts(){
     return`<div class="product-admin-card${low?' low-border':''}${out?' out-border':''}">
       <div class="pa-name">${p.name}</div>
       <div class="pa-row"><span class="pa-cat">${p.cat==='snack'?'🍫 Snack':'🥤 Getränk'}</span><span class="pa-price">${parseFloat(p.price).toFixed(2)} Fr</span></div>
+      <div class="pa-row"><span class="pa-cat" style="color:var(--muted);">Einkauf: ${parseFloat(p.cost||0).toFixed(2)} Fr</span></div>
       <div class="pa-stock-row"><span class="pa-stock-label">Lager:</span>
         <div class="stock-ctrl">
           <button class="stock-btn" onclick="adjustStock('${p.id}',-1)">−</button>
@@ -1087,13 +1170,24 @@ function renderProducts(){
       </div>
       <div class="pa-actions">
         <button class="btn btn-secondary btn-sm" onclick="openProductModal('${p.id}')">✏️ Bearbeiten</button>
-        <button class="btn btn-danger btn-sm" onclick="deleteProduct('${p.id}')">✕</button>
+        <button class="btn btn-secondary btn-sm" onclick="openDeactivateModal('${p.id}')" title="Deaktivieren und ggf. ersetzen">🔁 Ersetzen</button>
       </div>
     </div>`;};
-  const sn=state.products.filter(p=>p.cat==='snack'),dr=state.products.filter(p=>p.cat==='drink');
+  const activeProds=state.products.filter(p=>(p.status||'ativo')!=='inativo');
+  const inactiveProds=state.products.filter(p=>p.status==='inativo');
+  const sn=activeProds.filter(p=>p.cat==='snack'),dr=activeProds.filter(p=>p.cat==='drink');
   document.getElementById('admin-snacks').innerHTML=sn.length?sn.map(card).join(''):'<p style="color:var(--muted);font-size:13px;">Keine Snacks.</p>';
   document.getElementById('admin-drinks').innerHTML=dr.length?dr.map(card).join(''):'<p style="color:var(--muted);font-size:13px;">Keine Getränke.</p>';
   document.getElementById('admin-names').innerHTML=state.people.map(name=>`<div class="name-btn" style="display:flex;justify-content:space-between;align-items:center;gap:8px;"><span>${name}</span><button onclick="deletePerson('${name}')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;padding:0;">✕</button></div>`).join('');
+  // Produtos inativos — secção informativa (histórico preservado)
+  const inactEl=document.getElementById('admin-inactive-products');
+  if(inactEl){
+    inactEl.innerHTML=inactiveProds.length?inactiveProds.map(p=>`<div class="product-admin-card" style="opacity:.55;">
+      <div class="pa-name">${p.name} <span style="font-size:10px;color:var(--muted);">(inaktiv)</span></div>
+      <div class="pa-row"><span class="pa-cat">${p.cat==='snack'?'🍫 Snack':'🥤 Getränk'}</span><span class="pa-price">${parseFloat(p.price).toFixed(2)} Fr</span></div>
+      <div class="pa-actions"><button class="btn btn-secondary btn-sm" onclick="reactivateProduct('${p.id}')">↩️ Reaktivieren</button></div>
+    </div>`).join(''):'<p style="color:var(--muted);font-size:13px;">Keine inaktiven Produkte.</p>';
+  }
 }
 async function adjustStock(id,delta){
   const p=state.products.find(x=>x.id===id);if(!p)return;
@@ -1115,11 +1209,62 @@ async function saveProduct(){
   if(!name||isNaN(price)){alert('Bitte alle Felder ausfüllen.');return;}
   showLoading('Wird gespeichert…');
   try{
-    const body={id:editingProductId,name,cat,price,stock:isNaN(stock)?10:stock,cost};
+    const status=editingProductId?((state.products.find(x=>x.id===editingProductId)||{}).status||'ativo'):'ativo';
+    const body={id:editingProductId,name,cat,price,stock:isNaN(stock)?10:stock,cost,status};
     const res=await api('saveProduct',body);
     if(editingProductId){const p=state.products.find(x=>x.id===editingProductId);p.name=name;p.cat=cat;p.price=price;p.stock=isNaN(stock)?0:stock;p.cost=cost;}
-    else{state.products.push({id:res.id,name,cat,price,stock:isNaN(stock)?10:stock,cost});}
+    else{state.products.push({id:res.id,name,cat,price,stock:isNaN(stock)?10:stock,cost,status:'ativo'});}
     hideLoading();closeModal('modal-product');renderProducts();showToast(editingProductId?'Produkt aktualisiert!':'Produkt hinzugefügt!');
+  }catch(e){hideLoading();showToast('Fehler: '+e.message,'error');}
+}
+
+let pendingDeactivateId=null;
+function openDeactivateModal(id){
+  pendingDeactivateId=id;
+  const p=state.products.find(x=>x.id===id);
+  document.getElementById('modal-deactivate-title').textContent=`${p.name} ersetzen`;
+  document.getElementById('input-replace-create').checked=false;
+  document.getElementById('replace-new-fields').style.display='none';
+  document.getElementById('input-replace-name').value='';
+  document.getElementById('input-replace-price').value=p.price;
+  document.getElementById('input-replace-cost').value=p.cost||'';
+  document.getElementById('input-replace-stock').value='10';
+  document.getElementById('modal-deactivate').classList.remove('hidden');
+}
+function toggleReplaceFields(){
+  document.getElementById('replace-new-fields').style.display=document.getElementById('input-replace-create').checked?'block':'none';
+}
+async function confirmDeactivate(){
+  if(!pendingDeactivateId)return;
+  showLoading('Wird deaktiviert…');
+  try{
+    await api('setProductStatus',{id:pendingDeactivateId,status:'inativo'});
+    const p=state.products.find(x=>x.id===pendingDeactivateId);
+    if(p)p.status='inativo';
+
+    if(document.getElementById('input-replace-create').checked){
+      const name=document.getElementById('input-replace-name').value.trim();
+      const price=parseFloat(document.getElementById('input-replace-price').value);
+      const cost=parseFloat(document.getElementById('input-replace-cost').value)||0;
+      const stock=parseInt(document.getElementById('input-replace-stock').value)||0;
+      const cat=p?p.cat:'snack';
+      if(name&&!isNaN(price)){
+        const res=await api('saveProduct',{name,cat,price,stock,cost,status:'ativo'});
+        state.products.push({id:res.id,name,cat,price,stock,cost,status:'ativo'});
+      }
+    }
+    hideLoading();closeModal('modal-deactivate');renderProducts();
+    showToast('Produkt deaktiviert — Verlauf bleibt erhalten.');
+  }catch(e){hideLoading();showToast('Fehler: '+e.message,'error');}
+  pendingDeactivateId=null;
+}
+async function reactivateProduct(id){
+  showLoading('Wird reaktiviert…');
+  try{
+    await api('setProductStatus',{id,status:'ativo'});
+    const p=state.products.find(x=>x.id===id);
+    if(p)p.status='ativo';
+    hideLoading();renderProducts();showToast('Produkt reaktiviert!');
   }catch(e){hideLoading();showToast('Fehler: '+e.message,'error');}
 }
 async function deleteProduct(id){
@@ -1185,7 +1330,7 @@ async function refreshEinkauf(){
 
 function buildEinkaufFromStock(){
   const thr=parseInt(state.config.stock_threshold)||3;
-  const lowItems=state.products.filter(p=>(p.stock??99)<=thr);
+  const lowItems=state.products.filter(p=>(p.status||'ativo')!=='inativo'&&(p.stock??99)<=thr);
   // merge with existing einkaufItems — keep reservations
   const existing={};
   einkaufItems.forEach(i=>{existing[i.productId]=i;});
@@ -1231,6 +1376,7 @@ function renderEinkauf(){
       <button class="einkauf-res-btn ${item.reservado?'reserved':'unreserved'}" onclick="einkaufToggleRes(${idx})">
         ${item.reservado?'✓ Reserviert':'Reservieren'}
       </button>
+      <button class="pay-btn" style="white-space:nowrap;" onclick="openConfirmPurchaseModal(${idx})">✓ Gekauft</button>
       <button class="einkauf-remove" onclick="einkaufRemove(${idx})" title="Entfernen">✕</button>
     </div>`;
   }).join('');
@@ -1266,64 +1412,126 @@ async function saveEinkaufList(){
   }catch(e){hideLoading();showToast('Fehler: '+e.message,'error');}
 }
 
+let pendingPurchaseIdx=null;
+function openConfirmPurchaseModal(idx){
+  pendingPurchaseIdx=idx;
+  const item=einkaufItems[idx];
+  const prod=state.products.find(p=>p.id===item.productId);
+  const cost=prod?(parseFloat(prod.cost)||0):0;
+  const qty=item.qtyComprar||1;
+  const suggested=(cost*qty).toFixed(2);
+  document.getElementById('modal-confirm-purchase-title').textContent=`Einkauf bestätigen: ${item.productName}`;
+  document.getElementById('modal-confirm-purchase-sub').textContent=`${qty}x à ${cost.toFixed(2)} Fr (Einkaufspreis)`;
+  document.getElementById('input-confpur-valor').value=suggested;
+  document.getElementById('input-confpur-data').value=new Date().toISOString().split('T')[0];
+  document.getElementById('input-confpur-nota').value='';
+  document.getElementById('modal-confirm-purchase').classList.remove('hidden');
+}
+
+async function saveConfirmPurchase(){
+  if(pendingPurchaseIdx===null)return;
+  const item=einkaufItems[pendingPurchaseIdx];
+  const valor=parseFloat(document.getElementById('input-confpur-valor').value);
+  const data=document.getElementById('input-confpur-data').value;
+  const nota=document.getElementById('input-confpur-nota').value.trim();
+  if(isNaN(valor)||valor<0){alert('Bitte einen gültigen Betrag eingeben.');return;}
+  showLoading('Wird bestätigt…');
+  try{
+    const res=await api('confirmPurchase',{
+      productId:item.productId, productName:item.productName,
+      qty:item.qtyComprar, valor, data, nota,
+      descricao:`${item.productName} (${item.qtyComprar}x)`
+    });
+    if(res.ok){
+      // Atualiza stock local
+      const prod=state.products.find(p=>p.id===item.productId);
+      if(prod)prod.stock=res.novoStock;
+      // Remove da lista local
+      einkaufItems.splice(pendingPurchaseIdx,1);
+      // Adiciona à lista de compras local (para a Kasse refletir já)
+      state.compras.push({id:res.id,descricao:`${item.productName} (${item.qtyComprar}x)`,valor,data,mes:data.slice(0,7),nota,produtoId:item.productId,qty:item.qtyComprar});
+      hideLoading();closeModal('modal-confirm-purchase');renderEinkauf();
+      showToast(`${item.productName} gekauft — Lager aktualisiert!`);
+    }
+  }catch(e){hideLoading();showToast('Fehler: '+e.message,'error');}
+  pendingPurchaseIdx=null;
+}
+
 // ═══════════════════════════════════════════════════════
 // KASSE
 // ═══════════════════════════════════════════════════════
-function getMonthsAll(){
-  const m=new Set([
-    ...state.consumos.map(r=>{const d=new Date(r.timestamp);return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;}),
-    ...state.pagamentos.map(r=>r.mes||''),
-    ...state.compras.map(r=>r.mes||'')
-  ]);
-  m.delete('');
-  const n=new Date();m.add(`${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}`);
-  return Array.from(m).sort().reverse();
-}
-
-function renderKasse(){
-  const months=getMonthsAll();
+async function renderKasse(){
+  const months=getMonths();
   const mSel=document.getElementById('kasse-month-filter');
   const cm=mSel.value||months[0];
   mSel.innerHTML=months.map(m=>`<option value="${m}"${m===cm?' selected':''}>${monthLabel(m)}</option>`).join('');
   document.getElementById('kasse-month-badge').textContent=monthLabel(cm);
 
-  // Receitas = pagamentos confirmados neste mês
-  const pagMes=state.pagamentos.filter(p=>p.mes===cm);
-  const totalRecebido=pagMes.reduce((s,p)=>s+parseFloat(p.valor||0),0);
+  let kd;
+  showLoading('Kasse wird geladen…');
+  try{ kd=await api('getKasseData',{month:cm}); }
+  catch(e){ hideLoading(); showToast('Fehler: '+e.message,'error'); return; }
+  hideLoading();
 
-  // Despesas = compras neste mês
-  const compMes=state.compras.filter(c=>c.mes===cm);
-  const totalGasto=compMes.reduce((s,c)=>s+parseFloat(c.valor||0),0);
+  const totalRecebido=(kd.pagamentosMes||[]).reduce((s,p)=>s+parseFloat(p.valor||0),0);
+  const totalGasto=(kd.comprasMes||[]).reduce((s,c)=>s+parseFloat(c.valor||0),0);
+  const fundoAcumulado=parseFloat(kd.fundoAcumulado||0);
+  const caixaLiquida=fundoAcumulado+totalRecebido-totalGasto;
+  const valorStock=parseFloat(kd.valorStock||0);
 
-  // Resultado
-  const resultado=totalRecebido-totalGasto;
-  const resClass=resultado>0?'plus':resultado<0?'minus':'neutral';
-  const resSign=resultado>0?'+':'';
+  const cxClass=caixaLiquida>0?'plus':caixaLiquida<0?'minus':'neutral';
+  const cxSign=caixaLiquida>0?'+':'';
+
   document.getElementById('kasse-result-box').innerHTML=`
-    <div class="kasse-result ${resClass}" style="margin-bottom:20px;">
+    <div class="kasse-result ${cxClass}" style="margin-bottom:10px;">
       <div>
-        <div class="kasse-result-label">Ergebnis diesen Monat</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:2px;">${totalRecebido.toFixed(2)} Fr erhalten — ${totalGasto.toFixed(2)} Fr ausgegeben</div>
+        <div class="kasse-result-label">Kassenstand (Bargeld)</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px;">Fonds ${fundoAcumulado.toFixed(2)} + ${totalRecebido.toFixed(2)} erhalten − ${totalGasto.toFixed(2)} ausgegeben</div>
       </div>
-      <div class="kasse-result-value ${resClass}">${resSign}${resultado.toFixed(2)} Fr</div>
+      <div class="kasse-result-value ${cxClass}">${cxSign}${caixaLiquida.toFixed(2)} Fr</div>
+    </div>
+    <div class="kasse-result neutral" style="margin-bottom:20px;">
+      <div>
+        <div class="kasse-result-label">Lagerwert (Einkaufspreis)</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px;">Wert des aktuellen Bestands, noch nicht verkauft</div>
+      </div>
+      <div class="kasse-result-value neutral">${valorStock.toFixed(2)} Fr</div>
     </div>`;
 
   document.getElementById('kasse-kpis').innerHTML=`
     <div class="kpi-card"><div class="kpi-label">Einnahmen</div><div class="kpi-value green">${totalRecebido.toFixed(2)} Fr</div><div class="kpi-sub">bezahlte Konsumationen</div></div>
     <div class="kpi-card"><div class="kpi-label">Ausgaben</div><div class="kpi-value red">${totalGasto.toFixed(2)} Fr</div><div class="kpi-sub">Einkäufe Stock</div></div>`;
 
-  // Tabela pagamentos
-  document.getElementById('kasse-payments-table').innerHTML=pagMes.length?pagMes.sort((a,b)=>new Date(b.data)-new Date(a.data)).map(p=>{
+  document.getElementById('kasse-payments-table').innerHTML=kd.pagamentosMes.length?kd.pagamentosMes.sort((a,b)=>new Date(b.data)-new Date(a.data)).map(p=>{
     const d=new Date(p.data);const dt=`${d.getDate().toString().padStart(2,'0')}.${(d.getMonth()+1).toString().padStart(2,'0')}`;
     const methIcon={twint:'📱',bar:'💵',transfer:'🏦',andere:'💳'}[p.metodo]||'💳';
     return`<tr><td class="td-name">${p.pessoa}</td><td class="td-price">${parseFloat(p.valor).toFixed(2)} Fr</td><td class="td-muted">${methIcon} ${p.metodo}</td><td class="td-muted">${dt}</td></tr>`;
   }).join(''):`<tr><td colspan="4"><div class="empty-state"><p>Noch keine Zahlungen diesen Monat.</p></div></td></tr>`;
 
-  // Tabela compras
-  document.getElementById('kasse-purchases-table').innerHTML=compMes.length?compMes.sort((a,b)=>new Date(b.data)-new Date(a.data)).map(c=>{
+  document.getElementById('kasse-purchases-table').innerHTML=kd.comprasMes.length?kd.comprasMes.sort((a,b)=>new Date(b.data)-new Date(a.data)).map(c=>{
     const d=new Date(c.data);const dt=`${d.getDate().toString().padStart(2,'0')}.${(d.getMonth()+1).toString().padStart(2,'0')}`;
     return`<tr><td class="td-name">${c.descricao}</td><td class="td-price">${parseFloat(c.valor).toFixed(2)} Fr</td><td class="td-muted">${dt}</td></tr>`;
   }).join(''):`<tr><td colspan="3"><div class="empty-state"><p>Noch keine Einkäufe diesen Monat.</p></div></td></tr>`;
+}
+
+function openFundoModal(){
+  document.getElementById('input-fundo-valor').value='';
+  document.getElementById('input-fundo-tipo').value='ajuste';
+  document.getElementById('input-fundo-nota').value='';
+  document.getElementById('modal-fundo').classList.remove('hidden');
+}
+
+async function saveFundo(){
+  const valor=parseFloat(document.getElementById('input-fundo-valor').value);
+  const tipo=document.getElementById('input-fundo-tipo').value;
+  const nota=document.getElementById('input-fundo-nota').value.trim();
+  if(isNaN(valor)||valor===0){alert('Bitte einen Betrag ungleich 0 eingeben (negativ für Entnahme).');return;}
+  showLoading('Wird gespeichert…');
+  try{
+    const data=new Date().toISOString().split('T')[0];
+    const res=await api('saveCaixaAjuste',{valor,tipo,data,nota});
+    if(res.ok){hideLoading();closeModal('modal-fundo');renderKasse();showToast('Kassenfonds aktualisiert!');}
+  }catch(e){hideLoading();showToast('Fehler: '+e.message,'error');}
 }
 
 function openCompraModal(){
@@ -1354,10 +1562,11 @@ async function saveCompra(){
 // ═══════════════════════════════════════════════════════
 // ZAHLUNGEN
 // ═══════════════════════════════════════════════════════
-function renderZahlungen(){
-  const months=getMonthsAll();
+async function renderZahlungen(){
+  const months=getMonths();
   const mSel=document.getElementById('zahl-month-filter');
   const cm=mSel.value||months[0];
+  try{ await loadConsumosByMonth(cm); }catch(e){ return; }
   mSel.innerHTML=months.map(m=>`<option value="${m}"${m===cm?' selected':''}>${monthLabel(m)}</option>`).join('');
   document.getElementById('zahl-month-badge').textContent=monthLabel(cm);
 
